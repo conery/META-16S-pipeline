@@ -45,11 +45,11 @@ def record_metadata(db, event, message):
 fetch_from_panda = 'SELECT panda_id, defline FROM panda'
 
 def defline_map(db, sample_id = None):
-	dm = { }
-	query = fetch_from_panda
-	if sample_id:
-		query += ' WHERE sample_id = {}'.format(sample_id)
-	for pid, defline in db.execute(query):
-		dm[defline] = pid
-	return dm
+    dm = { }
+    query = fetch_from_panda
+    if sample_id:
+        query += ' WHERE sample_id = {}'.format(sample_id)
+    for pid, defline in db.execute(query):
+        dm[defline] = pid
+    return dm
 
