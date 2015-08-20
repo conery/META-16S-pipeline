@@ -7,7 +7,6 @@
 # University of Oregon
 # 2014-04-29
 
-from FASTQ import *
 
 import sqlite3
 import argparse
@@ -15,73 +14,13 @@ import os
 import os.path
 import sys
 
-# These global vars define filenames and other items shared by two or more steps
+from common import *
+from FASTQ import *
 
-table_name = 'panda'
+# File names used in calls to pandaseq
+
 log_file_pattern = 'log.{}.txt'
 merge_file_pattern = 'merged.{}.fasta'
-
-###
-# Initialize (or re-initialize) the table that will hold the output from PANDAseq
-
-find_table = 'SELECT name FROM sqlite_master WHERE type = "table" AND name = "{}"'.format(table_name)
-drop_table = 'DROP TABLE {}'.format(table_name)
-create_table = 'CREATE TABLE {tbl} ( {tbl}_id INTEGER PRIMARY KEY AUTOINCREMENT, sample_id INTEGER, defline TEXT, sequence TEXT )'.format(tbl = table_name)
-
-def prepare_table(db, args):
-    """
-    Return True if the 'panda' table is initialized and ready to accept values.  If the
-    table exists already don't overwrite it unless --force was specified on the command line.
-    """
-    if db.execute(find_table).fetchall():
-        if args.force:
-            db.execute(drop_table)
-        else:
-            return False
-    db.execute(create_table)
-    return True
-
-###
-# Initialize the directory where intermediate work products will be stored.
-
-def init_workspace(args):
-    dirname = args.workspace
-    
-    if not os.path.isdir(dirname):
-        os.mkdir(dirname)
-    else:
-        for root, dirs, files in os.walk(dirname, topdown=False):
-            for name in files:
-                os.remove(os.path.join(root, name))
-            for name in dirs:
-                os.rmdir(os.path.join(root, name))
-
-###
-# Fetch sample names and the corresponding file names
-
-# fetch_barcodes = 'SELECT barcode_id, experiment, sequence FROM barcodes'
-# # file_pattern = 'L1_{exp}_{code1}-{code2}_L001_R{pair}_001.fastq'
-#
-# def load_barcodes(db, args):
-#     "Generate the names of the FASTQ files, associate them with barcode IDs."
-#     files = { }
-#     sql = fetch_barcodes
-#     if isinstance(args.experiment, str):
-#         sql += ' WHERE experiment = "{}"'.format(args.experiment)
-#     for bcid, expt, code in db.execute(sql):
-#         fn1 = os.path.join(args.directory, file_pattern.format(exp = expt, code1 = code[:7], code2 = code[7:], pair = 1))
-#         fn2 = os.path.join(args.directory, file_pattern.format(exp = expt, code1 = code[:7], code2 = code[7:], pair = 2))
-#         files[bcid] = {1: fn1, 2: fn2}
-#     return files
-    
-fetch_samples = 'SELECT sample_id, name, r1_file, r2_file FROM samples'
-
-def fetch_sample_list(db, args):
-    "Return a list of sample names and the corresponding FASTQ file names."
-    sql = fetch_samples
-    if isinstance(args.sample, str):
-        sql += ' WHERE name = "{}"'.format(args.sample)
-    return db.execute(sql).fetchall()
 
 ###
 # Fetch the primer sequences from the database
@@ -117,14 +56,13 @@ def run_panda(args, sid, fn1, fn2, primers):
     cmnd += ' -o ' + str(args.minoverlap)
     print(cmnd)
     if not args.norun:
-        db.execute("INSERT INTO log VALUES (DATETIME('NOW'), ?, ?, ?)", (sys.argv[0], 'exec', cmnd))
-        db.commit()
+        record_metadata(db, 'exec', cmnd, commit=True)
         res = os.system(cmnd)
 
 ###
 # Import the assembled sequences
 
-insert_sequence = 'INSERT INTO {} (sample_id, defline, sequence) VALUES (?, ?, ?)'.format(table_name)
+insert_sequence = 'INSERT INTO panda (sample_id, defline, sequence) VALUES (?, ?, ?)'
 
 def import_results(db, args, sid):
     file = open(os.path.join(args.workspace, merge_file_pattern.format(sid)))
@@ -132,7 +70,6 @@ def import_results(db, args, sid):
     count = 0
     limit = int(args.limit) if args.limit else None
     while len(defline) > 0:
-        # defline = ':'.join(defline[1:].split(':')[:-1])
         defline = FASTQ.parse_defline(defline)
         sequence = file.readline()
         db.execute(insert_sequence, (sid, defline, sequence.strip()))
@@ -148,53 +85,48 @@ def import_results(db, args, sid):
 def assemble_pairs(db, args):
     init_workspace(args)
     primers = fetch_primers(db)
-    # files = fetch_fastq_filenames(db, args)
-    for sid, sname, fn1, fn2 in fetch_sample_list(db, args):
+    for sid, sname, fn1, fn2 in sample_list(db, args):
         run_panda(args, sid, fn1, fn2, primers)
-        if not args.noimport:
+        if not args.noimport and not args.norun:
             import_results(db, args, sid)
 
 ###
-# Set up command line arguments
+# Check the combination of command line options to make sure they're sensible
 
-def init_api():
-    parser = argparse.ArgumentParser(
-        description="""Run PANDAseq to remove spacers and primers, filter low quality sequences, and find
-        the overlapping ends of pairs of reads.
-        """
-    )
-    parser.add_argument('dbname', help='the name of the SQLite database file')
-    parser.add_argument('-f', '--force', action='store_true', help='re-initialize an existing table')
-    parser.add_argument('-w', '--workspace', help='working directory', default='panda')
-    parser.add_argument('-d', '--directory', help='directory with input FASTQ files', default='data')
-    parser.add_argument('-s', '--sample', metavar='id', required=False, help='sample to assemble')
-    parser.add_argument('-a', '--all', action='store_true', help='assemble all samples')
-    # parser.add_argument('-m', '--minlength', help='minimum assembled sequence length', type=int, default=150)
-    parser.add_argument('-m', '--minoverlap', help='minimum overlap length', type=int, default=10)
-    parser.add_argument('-L', '--limit', help='number of sequences to import')
-    parser.add_argument('--noimport', action='store_true', help="assemble pairs, but leave them in folder")
-    parser.add_argument('--norun', action='store_true', help="print shell commands but don't execute them")
-    return parser.parse_args()
+def validate_options(args):
+    # if we're not loading data the limit option is superfluous
+    if args.noimport and args.limit:
+        print('Warning: options ignored: with --noimport the following options are ignored: --limit')
 
 ###
 # Parse the command line arguments, call the top level function...
 
 if __name__ == "__main__":
-    args = init_api()
     
-    if not (args.sample or args.all):
-        argparse.ArgumentParser.exit(1, 'Specify a sample name or --all for all samples')
-        
-    if args.limit and args.noimport:
-        argparse.ArgumentParser.exit(1, 'Incompatible options:  --limit and --noimport')
+    args = init_api(
+        desc = "Run PANDAseq to filter low quality sequences, and find overlapping ends of pairs of reads.",
+        with_limits = True,
+        specs = [
+            ('directory',    { 'metavar': 'dir', 'help' : 'name of directory containing FASTQ files' } ),
+            ('workspace',    { 'metavar': 'dir', 'help' : 'working directory', 'default' : 'panda' } ),
+            ('minlength',    { 'metavar': 'N', 'help' : 'minimum assembled sequence length', 'type' : int, 'default' : 150} ),
+            ('minoverlap',   { 'metavar': 'N', 'help' : 'minimum overlap length', 'type' : int, 'default' : 10} ),
+            ('norun',        { 'action': 'store_true', 'help' : "print shell commands but don't execute them"} ),
+        ]
+    )
     
+    validate_options(args)
     db = sqlite3.connect(args.dbname)
+    record_metadata(db, 'start', ' '.join(sys.argv[1:]))
     
-    if not prepare_table(db, args):
-        argparse.ArgumentParser.exit(1, 'Table exists; use --force if you want to replace previous values')
+    try:
+        panda_spec = [('sample_id', 'foreign', 'samples'), ('defline', 'TEXT'),  ('sequence', 'TEXT')]
+        init_table(db, 'panda', 'panda_id', panda_spec, args.force, args.sample)
+    except Exception as err:
+        print('Error while initializing output table:', err)
+        argparse.ArgumentParser.exit(1, 'Script aborted')
     
-    db.execute("INSERT INTO log VALUES (DATETIME('NOW'), ?, ?, ?)", (sys.argv[0], 'start', ' '.join(sys.argv)) )
     assemble_pairs(db, args)
-    db.execute("INSERT INTO log VALUES (DATETIME('NOW'), ?, ?, ?)", (sys.argv[0], 'end', '') )
+    record_metadata(db, 'end', '')
     
     db.commit()

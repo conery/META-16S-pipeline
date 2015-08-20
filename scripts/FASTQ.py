@@ -136,6 +136,15 @@ class FASTQ:
         else:
             return len(self._blob)
 
+    @staticmethod
+    def parse_defline(s):
+        """
+        Remove redundant characters from an Illumina format defline, return a new defline
+        formed from the lane, tile number, and x and y coordinates.
+        """
+        x = s.split(':')
+        return ':'.join(x[3:7])
+    
 # A FASTQReader is a type of text file.  It adds a readseq method that returns a FASTQ object
 # for the next sequence in the file.  It also implements the iterator pattern so users can
 # iterate over the file.
@@ -171,25 +180,5 @@ class FASTQReader(io.TextIOWrapper):
             res += self.readline()
         return FASTQ(res.strip())
 
-
-    # @staticmethod
-    # def read(f):
-    #     "Read 4 lines from a FASTQ format data file, return an uncompressed FASTQ object."
-    #     res = f.readline()
-    #     if len(res) > 0:
-    #         for i in range(3):
-    #             res += f.readline()
-    #         return FASTQ(res.strip())
-    #     else:
-    #         return None
-    #
-    # @staticmethod
-    # def parse_defline(s):
-    #     """
-    #     Remove redundant characters from an Illumina format defline, return a new defline
-    #     formed from the lane, tile number, and x and y coordinates.
-    #     """
-    #     x = s.split(':')
-    #     return ':'.join(x[3:7])
 
 

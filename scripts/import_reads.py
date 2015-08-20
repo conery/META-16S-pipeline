@@ -18,53 +18,6 @@ from common import *
 from FASTQ import *
 
 ###
-# Make a list of sample IDs to import.  If --sample X was specified on the 
-# command line load data for that sample only, otherwise load data for all
-# samples.  The return value is a list of records with FASTQ file names for 
-# the specified samples.
-
-def sample_list(db, args):
-    "Return a list of sample names and the corresponding FASTQ file names currently in the DB"
-    sql = 'SELECT sample_id, name, r1_file, r2_file FROM samples'
-    if isinstance(args.sample, str):
-        sql += ' WHERE name = "{}"'.format(args.sample)
-    return db.execute(sql).fetchall()
-
-###
-# Prepare 'reads', the table that will hold the FASTQ data.  If the table
-# doesn't exist create it.  If we already have a table get the set of sample
-# names for reads already in the database and compare them with the names 
-# specified by the command line.  If --force was specified on the command
-# line erase any conflicing data, otherwise return False so the script prints
-# a warning message and exits.
-
-find_read_table = 'SELECT name FROM sqlite_master WHERE type = "table" AND name = "reads"'
-create_read_table = 'CREATE TABLE reads ( read_id INTEGER PRIMARY KEY AUTOINCREMENT, sample_id INTEGER NOT NULL REFERENCES samples, read BLOB, defline text DEFAULT NULL )'
-find_sample = 'SELECT sample_id FROM reads WHERE sample_id = ? LIMIT 1'
-delete_sample = 'DELETE FROM reads WHERE sample_id = ?'
-create_read_index = 'CREATE INDEX defx ON reads (defline)'
-
-def prepare_read_table(db, existing, args):
-    "Create a new reads table or (if specified by --force) erase previous reads."
-    if not db.execute(find_read_table).fetchall():
-        db.execute(create_read_table)
-        db.execute(create_read_index)
-        return True
-        
-    already_loaded = []
-    for x in existing:                # Important: sample ID must be first column in each record
-        if db.execute(find_sample, (x[0],)).fetchall():
-            already_loaded.append(x[0])
-            
-    if already_loaded and not args.force:
-        return False
-        
-    for sample_id in already_loaded:        # if none previousy loaded this is a NOP
-        db.execute(delete_sample, (sample_id,)) 
-           
-    return True     
-
-###
 # Read the sequences from a pair of files (R1 and R2) for a specified sample.  Create
 # a FASTQ object for each read, compress it, and insert the compressed form into the 
 # reads table.
@@ -120,6 +73,10 @@ def import_files(db, samples, args):
             load_sequences(db, fn1, fn2, sid, args)
             record_metadata(db, 'import', '{}, {}'.format(fn1,fn2))
 
+    # TBD: consider making the index a command line option
+    if not args.noimport:
+        db.execute('CREATE INDEX IF NOT EXISTS defx ON reads (defline)')
+
 ###
 # Check the combination of command line options to make sure they're sensible
 
@@ -133,29 +90,32 @@ def validate_options(args):
     
 if __name__ == "__main__":
     
+    # Make the set of arguments common to all apps (including --limit, --sample, and --noimport), then add
+    # args specific to this script
     args = init_api(
         desc = "Import FASTQ files into a SQLite3 database for a PIP/NGS analysis pipeline.",
         epi = "If --noimport is specified sequence descriptions are created but sequences are not loaded into the database.",
+        with_limits = True,
         specs = [
             ('directory',    { 'required' : True, 'metavar': 'dir', 'help' : '(required) name of directory containing FASTQ files' } ),
-            ('noimport', { 'action': 'store_true', 'help' : "record file names but don't import sequences"} ),
-            ('sample', { 'metavar': 'id', 'help' : 'import sequences for this sample only'} ),
-            ('update', { 'action': 'store_true', 'help' : 'used with --sample, add sequences to existing table'} ),
-            ('limit', { 'metavar': 'N', 'help' : 'max number of sequences imported for each sample'} ),
             ('quality', { 'action': 'store_true', 'help' : "don't import sequences flagged as low quality"} ),
             ('deflines', { 'action': 'store_true', 'help' : 'include deflines with sequences'} ),
         ]
     )
+    
     validate_options(args)
-    
     db = sqlite3.connect(args.dbname)
-    
-    samples = sample_list(db, args)
-    if not prepare_read_table(db, samples, args):
-        argparse.ArgumentParser.exit(1, 'Sequences were loaded previously; use --force to replace them')
-                
     record_metadata(db, 'start', ' '.join(sys.argv[1:]))
-    import_files(db, samples, args)
-    record_metadata(db, 'end', '')
     
+    try:
+        read_spec = [('sample_id', 'foreign', 'samples'), ('read', 'BLOB'),  ('defline', 'TEXT DEFAULT NULL')]
+        init_table(db, 'reads', 'read_id', read_spec, args.force, args.sample)
+    except Exception as err:
+        print('Error while initializing output table:', err)
+        argparse.ArgumentParser.exit(1, 'Script aborted')
+    
+    samples = sample_list(db, args)                
+    import_files(db, samples, args)
+        
+    record_metadata(db, 'end', '')
     db.commit()
