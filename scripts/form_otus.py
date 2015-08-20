@@ -16,83 +16,18 @@ import os.path
 import re
 import sys
 
-# These global vars define filenames and other items shared by two or more steps
+# Define filenames (referenced by more than one function)
 
-ref_table_name = 'hits'
-cluster_table_name = 'clusters'
-member_table_name = 'members'
 input_file = 'seeds.fasta'
 cluster_file = 'clusters.fasta'
-# otu_file = 'otus.fasta'
 
-###
-# Initialize the directory where intermediate work products will be stored.
-
-def init_workspace(args):
-    dirname = args.workspace
-    
-    if not os.path.isdir(dirname):
-        os.mkdir(dirname)
-    else:
-        for root, dirs, files in os.walk(dirname, topdown=False):
-            for name in files:
-                os.remove(os.path.join(root, name))
-            for name in dirs:
-                os.rmdir(os.path.join(root, name))
-
-###
-# Initialize (or re-initialize) the tables that will hold the output from uclust
-
-find_table = 'SELECT name FROM sqlite_master WHERE type = "table" AND name = "{tbl}"'
-drop_table = 'DROP TABLE {tbl}'
-create_table = {
-    cluster_table_name : 'CREATE TABLE {tbl} ( cluster_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, sequence TEXT )'.format(tbl = cluster_table_name),
-    member_table_name : 'CREATE TABLE {tbl} ( member_id INTEGER PRIMARY KEY AUTOINCREMENT, cluster_id INTEGER, name TEXT, diffsqm INTEGER, dqt REAL, dqm REAL )'.format(tbl=member_table_name),
-}
-
-def prepare_tables(db, args):
-    """
-    Return True if the results tables are initialized and ready to accept values.  If a
-    table exists already don't overwrite it unless --force was specified on the command line.
-    """
-    for tbl in [cluster_table_name, member_table_name]:
-        if db.execute(find_table.format(tbl=tbl)).fetchall():
-            if args.force:
-                db.execute(drop_table.format(tbl=tbl))
-            else:
-                return False
-        db.execute(create_table[tbl])
-    return True
-
-###
-# Print sequences in the uniq table in fasta format
-
-# Update:  first see if there is a 'hits' table with results of the map-to-reference step.
-# If so, select best hits, use them to create the first part of the seeds file; if not,
-# just initialize an empty seeds file. The code that writes the unique sequecnes will 
-# append them to the seeds file.
-
-
-# def init_seed_file(db, args):
-#         db.execute("INSERT INTO log VALUES (DATETIME('NOW'), ?, ?, ?)", (sys.argv[0], 'query', make_best_hits))
-#         db.execute(make_best_hits)
-#         db.execute("INSERT INTO log VALUES (DATETIME('NOW'), ?, ?, ?)", (sys.argv[0], 'query', fetch_hits))
-#         ff = open(os.path.join(args.workspace, input_file), 'w')
-#         for query, target, n, pct, seq in db.execute(fetch_hits).fetchall():
-#             print('>{};size={}'.format(target,n), file=ff)
-#             print(re.sub('-','',seq), file=ff)
-#         ff.close()
-#     else:
-#         ff = open(os.path.join(args.workspace, input_file), 'w')
-#         ff.close()
-        
 ###
 # Print the sequences that will be clustered.  If a prior stage did a map to reference
 # sequences the results will be in a table named 'hits' and we need to merge that table
 # with the unique sequences.  Otherwise just print the unique sequences in order of 
 # decreasing frequency
     
-find_ref_table = 'SELECT name FROM sqlite_master WHERE type = "table" AND name = "{}"'.format(ref_table_name)
+find_ref_table = 'SELECT name FROM sqlite_master WHERE type = "table" AND name = "hits"'
 
 def print_sequences(db, args):
     if db.execute(find_ref_table).fetchall():
@@ -121,12 +56,7 @@ def print_unique_sequences(db, args):
         # print(sequence, file=ff)
     ff.close()
 
-# Deprecated -- hits table from map_reference.py now has only one best hit
-# make_index = 'CREATE INDEX qx ON hits (query)'
-# make_best_hits = 'CREATE TEMPORARY TABLE best_hits AS SELECT query, target, max(identity) AS identity, CAST(align_length as real) / query_length AS align_pct, target_chars FROM hits GROUP BY query'
-# select_hits = 'SELECT n, query, target_chars FROM panda JOIN uniq USING (panda_id) JOIN best_hits ON (query = defline) WHERE align_pct > 0.95 ORDER BY n DESC'
-
-select_hits = 'SELECT panda_id, identity, match_id, match_chars FROM {tbl}'.format(tbl=ref_table_name)
+select_hits = 'SELECT panda_id, identity, match_id, match_chars FROM hits'
 
 def merge_ref_with_unique(db, args):
     # print(select_hits)
@@ -169,8 +99,8 @@ def run_cluster_otus(args):
 ###
 # Populate the tables by importing the FASTA file produced by uclust.  
 
-insert_cluster = 'INSERT INTO {} (cluster_id, name, sequence) VALUES (?,?,?)'.format(cluster_table_name)
-insert_member = 'INSERT INTO {} (cluster_id, name, diffsqm, dqt, dqm) VALUES (?,?,?,?,?)'.format(member_table_name)
+insert_cluster = 'INSERT INTO clusters (cluster_id, name, sequence) VALUES (?,?,?)'
+insert_member = 'INSERT INTO members (cluster_id, name, diffsqm, dqt, dqm) VALUES (?,?,?,?,?)'
 
 def import_results(db, args):
     f = open(os.path.join(args.workspace, cluster_file))
@@ -210,33 +140,33 @@ def form_otus(db, args):
     print_sequences(db, args)
     run_cluster_otus(args)
     import_results(db, args)
-
-###
-# Parse the command line arguments, call the top level function...
-
-def init_api():
-    parser = argparse.ArgumentParser(
-        description="Run uclust to create de novo OTUs.",
-    )
-    parser.add_argument('dbname', help='the name of the SQLite database file')
-    parser.add_argument('-f', '--force', action='store_true', help='re-initialize an existing table')
-    parser.add_argument('--singletons', action='store_true', help = 'include singletons (default: disregard singletons)')
-    parser.add_argument('--workspace', help='working directory', default='clusters')
-    return parser.parse_args()
     
 ###
 # Parse the command line arguments, call the top level function...
     
 if __name__ == "__main__":
-    args = init_api()
-
-    db = sqlite3.connect(args.dbname)
+    
+    args = init_api(
+        desc = "Run uclust to create de novo OTUs.",
+        specs = [
+            ('workspace',    { 'metavar': 'dir', 'help' : 'working directory', 'default' : 'clusters' } ),
+            ('singletons',   { 'action': 'store_true', 'help' : 'include singletons (default: disregard singletons)' } ),
+        ]
+    )
         
-    if not prepare_tables(db, args):
-        argparse.ArgumentParser.exit(1, 'Table exists; use --force if you want to replace previous values')
+    db = sqlite3.connect(args.dbname)
+    record_metadata(db, 'start', ' '.join(sys.argv[1:]))
 
-    db.execute("INSERT INTO log VALUES (DATETIME('NOW'), ?, ?, ?)", (sys.argv[0], 'start', ' '.join(sys.argv)) )
+    try:
+        cluster_spec = [('name', 'TEXT'), ('sequence', 'TEXT')]
+        init_table(db, 'clusters', 'cluster_id', cluster_spec, args.force)
+        member_spec = [('cluster_id', 'foreign', 'clusters'), ('name', 'TEXT'), ('diffsqm', 'INTEGER'), ('dqt', 'REAL'), ('dqm', 'REAL')]
+        init_table(db, 'members', 'member_id', member_spec, args.force)
+    except Exception as err:
+        print('Error while initializing output tables:', err)
+        argparse.ArgumentParser.exit(1, 'Script aborted')
+
     form_otus(db, args)
-    db.execute("INSERT INTO log VALUES (DATETIME('NOW'), ?, ?, ?)", (sys.argv[0], 'end', '') )
+    record_metadata(db, 'end', '')
 
     db.commit()
