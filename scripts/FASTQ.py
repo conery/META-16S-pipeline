@@ -160,7 +160,6 @@ class FASTQReader(io.TextIOWrapper):
         super().__init__(open(fn, 'rb'))
 
     def __iter__(self):
-        self._count = 0
         return self
     
     def __next__(self):

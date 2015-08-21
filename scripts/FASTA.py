@@ -1,49 +1,66 @@
 # FASTA sequence class, comparable to the FASTQ class (also part of this project).  
 
 class FASTA:
-	"""
-	Simple FASTA sequence class
-	"""
-	def __init__(self, defline, sequence):
-		self._def = defline
-		self._seq = sequence
-	
-	def defline(self):
-		"Return the defline string for this object."
-		return self._def
-		
-	def sequence(self):
-		"Return the sequence string for this object."
-		return self._seq
-			
-	def __repr__(self):
-		"""
-		Return a 2-line string suitable for printing in a FASTA file.
-		"""
-		return '\n'.join(['>' + self._def, self._seq])
+    """
+    Simple FASTA sequence class
+    """
+    def __init__(self, defline, sequence):
+        self._def = defline
+        self._seq = sequence
+    
+    def defline(self):
+        "Return the defline string for this object."
+        return self._def
+        
+    def sequence(self):
+        "Return the sequence string for this object."
+        return self._seq
+            
+    def __repr__(self):
+        """
+        Return a 2-line string suitable for printing in a FASTA file.
+        """
+        return '\n'.join(['>' + self._def, self._seq])
 
-class FASTAReader:
-	"""
-	Create a FASTAReader object to read sequences from a file.
-	"""
-	def __init__(self, filename):
-		self._f = open(filename)
-		self._buf = self._f.readline()
-		# shouldn't happen, but.... skip any blank lines at the front of the file
-		while len(self._buf) == 1:
-			self._buf = self._f.readline()
+    def __len__(self):
+        return len(self._seq)
 
-	def read(self):
-		"""Return the next sequence from this file, or None if there are no more sequences"""
-		if len(self._buf) == 0:									# _buf has defline or empty line if at the end of the file
-			return None
-		if self._buf[0] == '>':
-			defline = self._buf.strip('>; \n')					# don't save the > at front or semicolon at end
-		else:
-			raise Exception("Defline does not start with '>'")
-		sequence = ''
-		self._buf = self._f.readline()
-		while len(self._buf) > 0 and self._buf[0] != '>':		# when loop exits _buf has the first line of the next sequence
-			sequence += self._buf.strip()
-			self._buf = self._f.readline()
-		return FASTA(defline, sequence)
+# A FASTAReader is a type of text file.  It adds a readseq method that returns a FASTA object
+# for the next sequence in the file.  It also implements the iterator pattern so users can
+# iterate over the file.
+
+# The readsseq method checks to make sure the sequence starts with a line that has a '>'
+# in the first column.  If not, it skips ahead to the next line that starts with '@'.  The
+# method allows sequences to be spread across multiple lines.
+
+import io
+
+class FASTAReader(io.TextIOWrapper):
+    def __init__(self, fn):
+        "Make a new FASTAReader for sequences in file 'fn'"
+        super().__init__(open(fn, 'rb'))
+        self._buffer = self.readline()             # initialize the buffer
+
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        res = self.readseq()
+        if res is None:
+            raise StopIteration
+        return res
+
+    def readseq(self):
+        "Return a FASTA object for the next sequence in the file."
+        while len(self._buffer) > 0 and self._buffer[0] != '>':
+            self._buffer = self.readline()
+        if len(self._buffer) == 0:
+            return None
+        defline = self._buffer.strip()
+        sequence = ''
+        self._buffer = self.readline()
+        while len(self._buffer) > 0 and self._buffer[0] != '>':
+            sequence += self._buffer.strip()
+            self._buffer = self.readline()
+        return FASTA(defline, sequence)
+        

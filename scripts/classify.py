@@ -66,7 +66,8 @@ def import_results(db, args):
     def update_names(parts):
         'iterate over the parts of a taxonomy string to update name tables'
         for p, x in parts.items():          # p is a level (domain, phylum, etc), x is the name at that level
-            if x is None or len(x) == 0: continue
+            if x is None or len(x) == 0: 
+                continue
             d = names[p]
             if x not in d:
                 d[x] = len(d)+1
@@ -140,9 +141,10 @@ if __name__ == "__main__":
     db = sqlite3.connect(args.dbname)
     record_metadata(db, 'start', ' '.join(sys.argv[1:]))
 
+    # the taxonomy table has two columns for each level -- one is a foreign key for the
+    # table of names for that level, the other is the probability of the classification
+
     try:
-        # the taxonomy table has two columns for each level -- one is a foreign key
-        # for the table of names for that level, the other is the probability of the classification
         taxonomy_spec = list(map(lambda x: (x+'_id', 'foreign', x), levels))
         taxonomy_spec += list(map(lambda x: ('p_'+x, 'REAL'), levels))
         init_table(db, 'taxonomy', 'taxonomy_id', taxonomy_spec, args.force)
