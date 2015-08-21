@@ -4,6 +4,10 @@
 #
 ###
 
+# config.py defines paths to resources and executables
+
+from config import *
+
 # Each script requires the name of the project database as a positional argument
 # and requires a --force argument to overwrite an existing table.  This function
 # initializes an argument parser with common arguments, adds script-specific
@@ -192,7 +196,5 @@ def defline_map(db, sample_id = None):
 # Return a string containing the path to one of the project resource files
 #
 
-resource_dir = os.path.join(sys.path[0], '..', 'resources')
-
 def path_to_resource(fn):
-    return os.path.join(resource_dir, fn)
+    return os.path.join(resource_dir, fn)       # resource_dir defined in config.py
