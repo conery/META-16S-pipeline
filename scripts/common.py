@@ -80,7 +80,7 @@ def init_workspace(args):
 
 # Parameters:
 
-def init_table(db, name, key, cols, replace, sample_name=None):
+def init_table(db, name, key, cols, replace, sample_name=None, has_primary=True):
     """Initialize the output table for this stage in the pipeline.  Parameters:
            db           reference to database
            name         output table name
@@ -104,9 +104,10 @@ def init_table(db, name, key, cols, replace, sample_name=None):
     
     def create_table_query():
         'Combine the column specs, return the CREATE TABLE query'
-        template = 'CREATE TABLE {tbl} ({key_col} INTEGER PRIMARY KEY AUTOINCREMENT, {cols})'
-        s = ', '.join(map(col_spec, cols))
-        return template.format(tbl=name, key_col=key, cols=s)
+        template = 'CREATE TABLE {tbl} ({key_col} {key_type}, {cols})'
+        k = 'INTEGER PRIMARY KEY AUTOINCREMENT' if has_primary else 'INTEGER'
+        c = ', '.join(map(col_spec, cols))
+        return template.format(tbl=name, key_col=key, key_type=k, cols=c)
 
     def constrained(template, sample_id):
         'Add sample ID constraints if the sample name was specified'
@@ -187,3 +188,11 @@ def defline_map(db, sample_id = None):
         dm[defline] = pid
     return dm
 
+###
+# Return a string containing the path to one of the project resource files
+#
+
+resource_dir = os.path.join(sys.path[0], '..', 'resources')
+
+def path_to_resource(fn):
+    return os.path.join(resource_dir, fn)

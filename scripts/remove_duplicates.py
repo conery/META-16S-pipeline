@@ -37,8 +37,7 @@ def run_cd_hit_dup(sid, args):
     cmnd += ' -i ' + os.path.join(args.directory, input_file_pattern.format(sid))
     cmnd += ' -o ' + os.path.join(args.workspace, output_file_pattern.format(sid))
     print(cmnd)
-    db.execute("INSERT INTO log VALUES (DATETIME('NOW'), ?, ?, ?)", (sys.argv[0], 'exec', cmnd))
-    db.commit()
+    record_metadata(db, 'exec', cmnd, commit=True)
     res = os.system(cmnd)
     
 ###

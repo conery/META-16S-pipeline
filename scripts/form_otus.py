@@ -16,7 +16,7 @@ import os.path
 import re
 import sys
 
-# Define filenames (referenced by more than one function)
+# Define filenames (may be referenced by more than one function)
 
 input_file = 'seeds.fasta'
 cluster_file = 'clusters.fasta'
@@ -43,8 +43,7 @@ def fetch_unique_sequences(db, args):
         sql += ' WHERE n > 1'
     sql += ' GROUP by sequence'
     sql += ' ORDER by count DESC'
-    # print(sql)
-    db.execute("INSERT INTO log VALUES (DATETIME('NOW'), ?, ?, ?)", (sys.argv[0], 'query', sql))
+    record_metadata(db, 'query', sql)
     return db.execute(sql)
     
 def print_unique_sequences(db, args):
@@ -52,15 +51,12 @@ def print_unique_sequences(db, args):
     ff = open(os.path.join(args.workspace, input_file), 'w')
     for pid, n, defline, sequence in res:
         print_one_seq(ff, n, defline, sequence)
-        # print('>{};size={}'.format(defline,n), file=ff)
-        # print(sequence, file=ff)
     ff.close()
 
 select_hits = 'SELECT panda_id, identity, match_id, match_chars FROM hits'
 
 def merge_ref_with_unique(db, args):
-    # print(select_hits)
-    db.execute("INSERT INTO log VALUES (DATETIME('NOW'), ?, ?, ?)", (sys.argv[0], 'query', select_hits))
+    record_metadata(db, 'query', select_hits)
     
     hits = { }
     for pid, pct, match_id, match_chars in db.execute(select_hits):
@@ -92,8 +88,7 @@ def run_cluster_otus(args):
     # cmnd += ' -otus ' + os.path.join(args.workspace, otu_file)
     cmnd += ' -fastaout ' + os.path.join(args.workspace, cluster_file)
     print(cmnd)
-    db.execute("INSERT INTO log VALUES (DATETIME('NOW'), ?, ?, ?)", (sys.argv[0], 'exec', cmnd))
-    db.commit()
+    record_metadata(db, 'exec', cmnd, commit=True)
     res = os.system(cmnd)
     
 ###
