@@ -37,14 +37,14 @@ import io
 import sys
 
 class FASTAReader(io.TextIOWrapper):
-    def __init__(self, desc):
+    def __init__(self, fn):
         "Make a new FASTAReader for sequences in file 'fn'"
         super().__init__(open(fn, 'rb'))
         # is there a way to read from stdin?  this code leads to an error ("underlying read
         # should have returned a bytes object") that was fixed by using 'rb' when opening
         # a file....
-        # if isinstance(desc, str):
-        #     super().__init__(open(desc, 'rb'))
+        # if isinstance(fn, str):
+        #     super().__init__(open(fn, 'rb'))
         # else:
         #     super().__init__(sys.stdin)
         self._buffer = self.readline()             # initialize the buffer

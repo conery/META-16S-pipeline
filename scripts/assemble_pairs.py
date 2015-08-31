@@ -40,20 +40,20 @@ def fetch_primers(db):
 
 def run_panda(args, sid, fn1, fn2, primers):
     cmnd = 'pandaseq'
-    # cmnd += ' -d B'                       # debug/trace info to keep
+    if args.algorithm:
+        cmnd += ' -A ' + args.algorithm
     cmnd += ' -N'                           # throw out seqs with N's
-    # cmnd += ' -t 0.7'                       # quality threshold (default = 0.6)
     cmnd += ' -f ' + os.path.join(args.directory, fn1)
     cmnd += ' -r ' + os.path.join(args.directory, fn2)
-    if len(primers) > 0 and not args.noprimers:
+    if len(primers) > 0:
         cmnd += ' -p ' + primers[1]
         cmnd += ' -q ' + primers[2]
-    # else:
-    #     cmnd += ' -A flash'
     cmnd += ' -w ' + os.path.join(args.workspace, merge_file_pattern.format(sid))
     cmnd += ' -g ' + os.path.join(args.workspace, log_file_pattern.format(sid))
-    cmnd += ' -l ' + str(args.minlength)
-    cmnd += ' -o ' + str(args.minoverlap)
+    if args.minlength is not None:
+        cmnd += ' -l ' + str(args.minlength)
+    if args.minoverlap is not None:
+        cmnd += ' -o ' + str(args.minoverlap)
     print(cmnd)
     if not args.norun:
         record_metadata(db, 'exec', cmnd, commit=True)
@@ -104,15 +104,15 @@ def validate_options(args):
 if __name__ == "__main__":
     
     args = init_api(
-        desc = "Run PANDAseq to filter low quality sequences, and find overlapping ends of pairs of reads.",
+        desc = "Run PANDAseq to filter low quality sequences, and find overlapping ends of pairs of reads. The default algorithm is pandaseq; alternatives are simple_bayesian, ea_util, flash, pear, rdp_mle, stitch, and uparse.",
         with_limits = True,
         specs = [
             ('directory',    { 'metavar': 'dir', 'help' : 'name of directory containing FASTQ files' } ),
             ('workspace',    { 'metavar': 'dir', 'help' : 'working directory', 'default' : 'panda' } ),
-            ('minlength',    { 'metavar': 'N', 'help' : 'minimum assembled sequence length', 'type' : int, 'default' : 150} ),
-            ('minoverlap',   { 'metavar': 'N', 'help' : 'minimum overlap length', 'type' : int, 'default' : 10} ),
+            ('algorithm',    { 'metavar': 'name', 'help' : 'algorithm for computing overlaps'} ),
+            ('minlength',    { 'metavar': 'N', 'help' : 'minimum assembled sequence length', 'type' : int} ),
+            ('minoverlap',   { 'metavar': 'N', 'help' : 'minimum overlap length', 'type' : int} ),
             ('norun',        { 'action': 'store_true', 'help' : "print shell commands but don't execute them"} ),
-            ('noprimers',    { 'action': 'store_true', 'help' : "don't use primers"} ),
         ]
     )
     

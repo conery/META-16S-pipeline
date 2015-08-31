@@ -42,6 +42,27 @@ iupac_map = {
 def iupac_regexp(pat):
     'Create a regular expression for a sequence, replacing IUPAC letters with groups'
     return ''.join(map(lambda ch: iupac_map[ch], pat))
+    
+complement = {
+    'A' : 'T', 
+    'T' : 'A', 
+    'C' : 'G',
+    'G' : 'C',
+	'R' : r'[TC]', 
+	'Y' : r'[GA]',
+	'S' : r'[AT]',
+	'W' : r'[GC]',
+	'K' : r'[CA]',
+	'M' : r'[TG]',
+	'B' : r'.',
+	'D' : r'.',
+	'H' : r'.',
+	'V' : r'.',
+	'N' : r'.'
+}
+
+def reverse_complement(pat):
+    return ''.join(map(lambda ch: complement[ch], reversed(pat)))
 
 ###
 # Parse command line arguments...
@@ -61,6 +82,7 @@ sequence type must be defined with the --fasta or --fastq option.
     parser.add_argument('-s', '--sequence', action='store_true', help='match sequence characters')
     parser.add_argument('-i', '--iupac', action='store_true', help='pattern contains IUPAC ambiguity letters')
     parser.add_argument('-v', action='store_true', help='print sequences that do not match the pattern')
+    parser.add_argument('-r', '--reverse', action='store_true', help='use the reverse complement of the pattern')
     parser.add_argument('--fasta', action='store_true', help='input stream is in FASTA format')
     parser.add_argument('--fastq', action='store_true', help='input stream is in FASTQ format')
     return parser.parse_args()
@@ -90,7 +112,7 @@ def validate(args):
     for fn in args.files:
         if os.path.splitext(fn)[1] not in reader_type:
             argparse.ArgumentParser.exit(1, 'invalid filename extension: ' + fn)
-            
+
 ###
 # Process a single file
 
@@ -114,7 +136,13 @@ if __name__ == "__main__":
     args = init_api()
     validate(args)
     
-    pattern = iupac_regexp(args.pattern) if args.iupac else args.pattern
+    if args.iupac:
+        pattern = iupac_regexp(args.pattern) 
+    elif args.reverse:
+        pattern = reverse_complement(args.pattern)
+    else:
+        pattern = args.pattern
+        
     print_to_tty = os.isatty(sys.stdout.fileno())
     
     if len(args.files) == 0:
