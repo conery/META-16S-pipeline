@@ -9,34 +9,13 @@
 
 # Usage:
 #
-#    fstats.pt file
+#    fstats.py file
 #
 
 import argparse
 
 from FASTA import *
 from FASTQ import *
-
-def update(stats, seq):
-    n = len(seq)
-    stats['n'] += 1
-    stats['sum'] += n
-    stats['min'] = min(n, stats['min'])
-    stats['max'] = max(n, stats['max'])
-
-def compute_fasta_stats(fn, stats):
-    f = FASTAReader(fn)
-    seq = f.read()
-    while seq is not None:
-        update(stats, seq.sequence())
-        seq = f.read()
-
-def compute_fastq_stats(fn, stats):
-    f = open(fn)
-    seq = FASTQ.read(f)
-    while seq is not None:
-        update(stats, seq.sequence())
-        seq = FASTQ.read(f)
 
 ###
 # Parse command line arguments...
@@ -55,15 +34,22 @@ def init_api():
 if __name__ == "__main__":
     args = init_api()
     
-    stats = { 'n' : 0, 'min': 10000, 'max': 0, 'sum' : 0}
-    
     if args.fn.endswith('.fasta'):
-        compute_fasta_stats(args.fn, stats)
+        reader = FASTAReader(args.fn)
     elif args.fn.endswith('.fastq'):
-        compute_fastq_stats(args.fn, stats)
+        reader = FASTQReader(args.fn)
     else:
         print('file name must end with .fasta or .fastq')
         exit(1)
+        
+    stats = { 'n' : 0, 'min': 10000, 'max': 0, 'sum' : 0}
+    
+    for seq in reader:
+        n = len(seq)
+        stats['n'] += 1
+        stats['sum'] += n
+        stats['min'] = min(n, stats['min'])
+        stats['max'] = max(n, stats['max'])
     
     print(stats['n'], 'sequences')
     print('shortest: {:7d}'.format(stats['min']))
