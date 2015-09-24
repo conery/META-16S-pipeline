@@ -82,6 +82,11 @@ class FASTQ:
         self._pair_end, self._filtered, self._control_bits, self._index = fields[1].split(':')
         self._parsed = True
         
+    def set_defline(self, instrument, run_id, flowcell_id, lane, tile, x, y, pair_end, filtered, control, index):
+        part1 = ':'.join(map(str, [instrument,run_id,flowcell_id,lane,tile,x,y]))
+        part2 = ':'.join(map(str, [pair_end, filtered, control, index]))
+        self._def = '@' + part1 + ' ' + part2
+        
     def filtered(self):
         "Return True if the defline contains ':Y:'"
         return re.search(r':Y:', self._def) is not None
