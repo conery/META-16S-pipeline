@@ -93,6 +93,11 @@ class FASTQ:
         else:
             return None
     
+    def set_defline(self, instrument, run_id, flowcell_id, lane, tile, x, y, pair_end, filtered, control, index):
+        part1 = ':'.join(map(str,[instrument, run_id, flowcell_id, lane, tile, x, y]))
+        part2 = ':'.join(map(str,[pair_end, filtered, control, index]))
+        self._def = '@{} {}'.format(part1,part2)
+
     def unique_id(self):
         "Return a unique identifying integer for this sequence"
         raise Exception('TBD')
